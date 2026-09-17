@@ -59,15 +59,14 @@ textarea{resize:vertical;min-height:220px;font-size:.78rem}
 <div id="pane-log" class="pane active">
   <table>
     <thead><tr>
-      <th>TIME</th><th>IP</th><th>KEY</th><th>HWID</th><th>RESULT</th><th>REASON</th>
+      <th>TIME</th><th>IP</th><th>KEY</th><th>RESULT</th><th>REASON</th>
     </tr></thead>
     <tbody>
     {% for e in access_log %}
     <tr>
-      <td>{{ e.time }}</td>
+      <td>{{ e.createdAt.strftime('%Y-%m-%d %H:%M:%S') if e.createdAt else '—' }}</td>
       <td>{{ e.ip }}</td>
       <td>{{ e.key[:18] }}{% if e.key|length > 18 %}…{% endif %}</td>
-      <td class="hwid">{{ (e.hwid or '')[:22] }}</td>
       <td>
         {% if e.result == 'VALID' %}<span class="badge-valid">VALID</span>
         {% elif e.result == 'BANNED' %}<span class="badge-ban">BANNED</span>
@@ -78,7 +77,7 @@ textarea{resize:vertical;min-height:220px;font-size:.78rem}
       <td>{{ e.reason }}</td>
     </tr>
     {% else %}
-    <tr><td colspan="6" style="text-align:center;color:#333;padding:24px">No entries yet</td></tr>
+    <tr><td colspan="5" style="text-align:center;color:#333;padding:24px">No entries yet</td></tr>
     {% endfor %}
     </tbody>
   </table>
@@ -109,28 +108,28 @@ textarea{resize:vertical;min-height:220px;font-size:.78rem}
       <th>KEY</th><th>OWNER</th><th>SCRIPT</th><th>IP LOCK</th><th>STATUS</th><th>CREATED</th><th>ACTIONS</th>
     </tr></thead>
     <tbody>
-    {% for key, v in keys.items() %}
+    {% for k in keys %}
     <tr>
-      <td>{{ key }}</td>
-      <td>{{ v.owner }}</td>
-      <td>{{ v.script_id }}</td>
-      <td>{% if v.hwid %}<span style="color:#229944;font-size:.72rem">{{ v.hwid }}</span>{% else %}<span style="color:#444">FREE</span>{% endif %}</td>
-      <td>{% if v.banned %}<span class="badge-ban">BANNED</span>{% else %}<span class="badge-valid">ACTIVE</span>{% endif %}</td>
-      <td>{{ v.get('created','—') }}</td>
+      <td>{{ k.key }}</td>
+      <td>{{ k.owner }}</td>
+      <td>{{ k.scriptId }}</td>
+      <td>{% if k.lockedIp %}<span style="color:#229944;font-size:.72rem">{{ k.lockedIp }}</span>{% else %}<span style="color:#444">FREE</span>{% endif %}</td>
+      <td>{% if k.banned %}<span class="badge-ban">BANNED</span>{% else %}<span class="badge-valid">ACTIVE</span>{% endif %}</td>
+      <td>{{ k.createdAt.strftime('%Y-%m-%d %H:%M') if k.createdAt else '—' }}</td>
       <td>
-        {% if v.banned %}
+        {% if k.banned %}
         <form class="inline" method="POST" action="/panel/{{ ADMIN_PATH }}/keys/unban">
-          <input type="hidden" name="key" value="{{ key }}">
+          <input type="hidden" name="key" value="{{ k.key }}">
           <button type="submit">Unban</button>
         </form>
         {% else %}
         <form class="inline" method="POST" action="/panel/{{ ADMIN_PATH }}/keys/ban">
-          <input type="hidden" name="key" value="{{ key }}">
+          <input type="hidden" name="key" value="{{ k.key }}">
           <button class="danger" type="submit">Ban</button>
         </form>
         {% endif %}
         <form class="inline" method="POST" action="/panel/{{ ADMIN_PATH }}/keys/delete">
-          <input type="hidden" name="key" value="{{ key }}">
+          <input type="hidden" name="key" value="{{ k.key }}">
           <button class="danger" type="submit" onclick="return confirm('Delete this key?')">Delete</button>
         </form>
       </td>
@@ -147,14 +146,14 @@ textarea{resize:vertical;min-height:220px;font-size:.78rem}
   <table>
     <thead><tr><th>IP</th><th>BANNED AT</th><th>REASON</th><th>ACTION</th></tr></thead>
     <tbody>
-    {% for ip, v in banned_ips.items() %}
+    {% for b in banned_ips %}
     <tr>
-      <td>{{ ip }}</td>
-      <td>{{ v.time }}</td>
-      <td>{{ v.reason }}</td>
+      <td>{{ b.ip }}</td>
+      <td>{{ b.createdAt.strftime('%Y-%m-%d %H:%M') if b.createdAt else '—' }}</td>
+      <td>{{ b.reason }}</td>
       <td>
         <form class="inline" method="POST" action="/panel/{{ ADMIN_PATH }}/ips/unban">
-          <input type="hidden" name="ip" value="{{ ip }}">
+          <input type="hidden" name="ip" value="{{ b.ip }}">
           <button type="submit">Unban</button>
         </form>
       </td>
@@ -197,10 +196,10 @@ textarea{resize:vertical;min-height:220px;font-size:.78rem}
   <div class="card">
     <h2>Saved Scripts</h2>
     <table>
-      <thead><tr><th>SCRIPT ID</th><th>FILE</th></tr></thead>
+      <thead><tr><th>SCRIPT ID</th><th>STORAGE</th></tr></thead>
       <tbody>
       {% for s in scripts %}
-      <tr><td>{{ s }}</td><td>data/scripts/{{ s }}.lua</td></tr>
+      <tr><td>{{ s }}</td><td>Database (Prisma)</td></tr>
       {% endfor %}
       </tbody>
     </table>
