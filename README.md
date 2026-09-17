@@ -1,4 +1,4 @@
-﻿# Susano Gateway & License Verification System
+# Susano Gateway & License Verification System
 
 Server-side Lua delivery, IP defense gateway, and Discord admin integration for the Susano FiveM executor.
 
@@ -92,16 +92,31 @@ PORT=8000
 
 ---
 
+## Live Vercel Deployment
+
+The FastAPI Gateway is deployed live on Vercel:
+
+- **Production URL:** `https://projectcrased.vercel.app`
+- **Admin Panel:** `https://projectcrased.vercel.app/panel/crased2026`
+- **Executor API Route:** `https://projectcrased.vercel.app/api/execute`
+- **GitHub Repository:** [anmetioncreator-sudo/projectcrased](https://github.com/anmetioncreator-sudo/projectcrased)
+
+> [!NOTE]
+> The live Vercel gateway handles license verification, automatic IP locking, security traps, and triple Discord webhook alerts in real time.
+> Because Vercel serverless functions do not support long-running background processes, run the Discord Bot separately (locally via `py run.py --bot` or 24/7 on Railway/Render using `python run.py`).
+
+---
+
 ## Hosting Analysis: Vercel vs. Railway / Render / VPS
 
-### Why Vercel is NOT Recommended for this stack:
-1. **Serverless Execution:** Vercel functions terminate after a few seconds of idle time. A **Discord Bot requires a 24/7 continuous WebSocket gateway connection** and will shut down immediately on Vercel.
-2. **Ephemeral File System:** SQLite (`dev.db`) on Vercel is read-only and reset on every invocation. All registered keys, bans, and logs will be lost.
+### Notes on Vercel Serverless:
+1. **Serverless Execution:** Vercel functions run on demand per request. The HTTP gateway routes, IP defense trap, and webhook alerts function smoothly.
+2. **Discord Bot:** A Discord bot requires a 24/7 continuous WebSocket gateway connection to Discord. Running the bot 24/7 is best done on Railway, Render, or a VPS.
 
-### Recommended Hosts for 24/7 Server + Bot:
-- **Railway.app** or **Render.com** (Free / low-cost):
-  - Directly connect your GitHub repository.
-  - Runs 24/7 containers with persistent disk for SQLite (or 1-click PostgreSQL).
-  - Starts both the FastAPI gateway and Discord Bot concurrently using `python run.py`.
+### Recommended Hosts for 24/7 Server + Bot in One Container:
+- **Railway.app** or **Render.com**:
+  - Connect your GitHub repository `anmetioncreator-sudo/projectcrased`.
+  - Set start command to `python run.py`.
+  - Runs both the FastAPI gateway and Discord Bot 24/7 concurrently.
 - **VPS (Ubuntu / Debian):**
-  - Run with `systemd` or Docker for 100% uptime and full control.
+  - Run with Docker (`Dockerfile` included in `backend/`) or `systemd`.

@@ -1,11 +1,11 @@
-﻿-- ╔══════════════════════════════════════════════════════════════╗
+-- ╔══════════════════════════════════════════════════════════════╗
 -- ║           SUSANO STUB  —  DO NOT SHARE THIS FILE            ║
 -- ║      Each customer receives a unique stub with their key     ║
 -- ╚══════════════════════════════════════════════════════════════╝
 
 -- ── CONFIGURE (one file per customer, key changes per person) ──
-local KEY    = "YOUR-LICENSE-KEY-HERE"
-local SERVER = "https://your-verify-server.com"
+local KEY    = "CRSED-DEMO-2026"
+local SERVER = "https://projectcrased.vercel.app"
 
 -- ── XOR secret — MUST match XOR_SECRET in backend/main.py ─────
 local _XK = "xK9mQ2pL8nR3vT5w"
