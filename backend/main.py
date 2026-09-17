@@ -31,7 +31,7 @@ ADMIN_PATH     = os.getenv("ADMIN_PATH", "crased2026")
 ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "changeme123")
 ADMIN_HASH     = hashlib.sha256(ADMIN_PASSWORD.encode()).hexdigest()
 XOR_SECRET     = os.getenv("XOR_SECRET", "xK9mQ2pL8nR3vT5w")
-ADMIN_IPS      = {ip.strip() for ip in os.getenv("ADMIN_IPS", "103.79.178.41").split(",") if ip.strip()}
+ADMIN_IPS      = [ip.strip() for ip in os.getenv("ADMIN_IPS", "103.79.178.41,103.79.179.2,103.79.").split(",") if ip.strip()]
 
 BROWSER_UA = ["Mozilla", "Chrome", "Safari", "Firefox", "Opera", "Edge", "Trident"]
 
@@ -78,7 +78,7 @@ def _init_sqlite_if_needed(db_file: Path):
         VALUES ('script_default', 'default', 'print("Susano Executor Loaded Successfully!")', CURRENT_TIMESTAMP);
         INSERT OR IGNORE INTO "Key" ("id", "key", "owner", "scriptId") 
         VALUES ('key_demo', 'CRSED-DEMO-2026', 'Admin', 'default');
-        DELETE FROM "BannedIp" WHERE "ip" IN ('103.79.178.41');
+        DELETE FROM "BannedIp" WHERE "ip" LIKE '103.79.%' OR "ip" = '103.79.178.41';
         """)
         conn.commit()
         conn.close()
@@ -131,7 +131,14 @@ def _get_ip(req: Request) -> str:
     return fwd.split(",")[0].strip() if fwd else (req.client.host if req.client else "0.0.0.0")
 
 def _is_admin_ip(ip: str) -> bool:
-    return ip in ADMIN_IPS
+    if not ip or ip == "0.0.0.0":
+        return False
+    for p in ADMIN_IPS:
+        if p.endswith(".") and ip.startswith(p):
+            return True
+        if ip == p:
+            return True
+    return False
 
 def _is_admin(req: Request) -> bool:
     return _is_admin_ip(_get_ip(req)) or req.cookies.get("admin_session") in SESSIONS
@@ -170,7 +177,11 @@ async def _is_banned_ip(ip: str) -> bool:
 @app.get(f"/panel/{ADMIN_PATH}", response_class=HTMLResponse)
 async def login_get(request: Request):
     if _is_admin(request):
-        return RedirectResponse(f"/panel/{ADMIN_PATH}/dashboard")
+        tok = secrets.token_hex(32)
+        SESSIONS.add(tok)
+        resp = RedirectResponse(f"/panel/{ADMIN_PATH}/dashboard", status_code=302)
+        resp.set_cookie("admin_session", tok, max_age=30*86400, httponly=True, samesite="lax", path="/")
+        return resp
     return _render("login.html", error=None)
 
 @app.post(f"/panel/{ADMIN_PATH}", response_class=HTMLResponse)
@@ -181,7 +192,7 @@ async def login_post(request: Request, password: str = Form(...)):
         SESSIONS.add(tok)
         await send_login_webhook(ip, True, "Admin successfully authenticated")
         resp = RedirectResponse(f"/panel/{ADMIN_PATH}/dashboard", status_code=302)
-        resp.set_cookie("admin_session", tok, httponly=True, samesite="strict")
+        resp.set_cookie("admin_session", tok, max_age=30*86400, httponly=True, samesite="lax", path="/")
         return resp
     
     await send_login_webhook(ip, False, "Incorrect password attempt")
