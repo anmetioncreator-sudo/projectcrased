@@ -1,4 +1,4 @@
-﻿"""
+"""
 backend/main.py - Key Verification Server for Susano Executor
 Database: Prisma + SQLite (or PostgreSQL via schema.prisma)
 Discord: Webhook Logging & Defense Alerts
@@ -43,6 +43,13 @@ async def lifespan(app: FastAPI):
     await db.disconnect()
 
 app  = FastAPI(docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespan)
+
+@app.middleware("http")
+async def ensure_db_connected(request: Request, call_next):
+    if not db.is_connected():
+        await db.connect()
+    return await call_next(request)
+
 _env = Environment(loader=FileSystemLoader(str(BASE / "templates")), autoescape=True)
 SESSIONS: set = set()
 
