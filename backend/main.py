@@ -9,6 +9,7 @@ import sys
 import base64
 import hashlib
 import secrets
+import sqlite3
 from pathlib import Path
 from datetime import datetime, timezone
 from contextlib import asynccontextmanager
@@ -34,7 +35,71 @@ XOR_SECRET     = os.getenv("XOR_SECRET", "xK9mQ2pL8nR3vT5w")
 BROWSER_UA = ["Mozilla", "Chrome", "Safari", "Firefox", "Opera", "Edge", "Trident"]
 
 # ── Prisma Client & Lifespan ──────────────────────────────────────────────────
-db = Prisma()
+def _init_sqlite_if_needed(db_file: Path):
+    try:
+        db_file.parent.mkdir(parents=True, exist_ok=True)
+        conn = sqlite3.connect(str(db_file))
+        cur = conn.cursor()
+        cur.executescript("""
+        CREATE TABLE IF NOT EXISTS "Key" (
+            "id" TEXT NOT NULL PRIMARY KEY,
+            "key" TEXT NOT NULL UNIQUE,
+            "owner" TEXT NOT NULL,
+            "scriptId" TEXT NOT NULL,
+            "lockedIp" TEXT,
+            "banned" BOOLEAN NOT NULL DEFAULT 0,
+            "banReason" TEXT,
+            "expires" DATETIME,
+            "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE TABLE IF NOT EXISTS "BannedIp" (
+            "id" TEXT NOT NULL PRIMARY KEY,
+            "ip" TEXT NOT NULL UNIQUE,
+            "reason" TEXT NOT NULL,
+            "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE TABLE IF NOT EXISTS "AccessLog" (
+            "id" TEXT NOT NULL PRIMARY KEY,
+            "ip" TEXT NOT NULL,
+            "key" TEXT NOT NULL,
+            "result" TEXT NOT NULL,
+            "reason" TEXT NOT NULL,
+            "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE TABLE IF NOT EXISTS "Script" (
+            "id" TEXT NOT NULL PRIMARY KEY,
+            "scriptId" TEXT NOT NULL UNIQUE,
+            "code" TEXT NOT NULL,
+            "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            "updatedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+        INSERT OR IGNORE INTO "Script" ("id", "scriptId", "code", "updatedAt") 
+        VALUES ('script_default', 'default', 'print("Susano Executor Loaded Successfully!")', CURRENT_TIMESTAMP);
+        INSERT OR IGNORE INTO "Key" ("id", "key", "owner", "scriptId") 
+        VALUES ('key_demo', 'CRSED-DEMO-2026', 'Admin', 'default');
+        """)
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        print(f"Database setup error: {e}", file=sys.stderr)
+
+is_serverless = "VERCEL" in os.environ or bool(os.environ.get("AWS_LAMBDA_FUNCTION_NAME"))
+if is_serverless:
+    db_file = Path("/tmp/dev.db")
+    _init_sqlite_if_needed(db_file)
+    db_url = f"file:{db_file}"
+    os.environ["DATABASE_URL"] = db_url
+else:
+    raw_url = os.getenv("DATABASE_URL", f"file:{BASE / 'dev.db'}")
+    if raw_url.startswith("file:"):
+        p_str = raw_url.replace("file:", "")
+        local_path = Path(p_str)
+        if not local_path.is_absolute():
+            local_path = BASE / local_path
+        _init_sqlite_if_needed(local_path)
+    db_url = raw_url
+
+db = Prisma(datasource={"url": db_url})
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
