@@ -206,7 +206,7 @@ async def cmd_unlock(ctx, key: str):
     except Exception as e:
         await ctx.send(f"❌ Error unlocking key: `{e}`")
 
-@bot.command(name="keys")
+@bot.command(name="keys", aliases=["listkeys"])
 async def cmd_keys(ctx):
     """Lists registered keys."""
     try:
@@ -232,7 +232,7 @@ async def cmd_keys(ctx):
     except Exception as e:
         await ctx.send(f"❌ Error fetching keys: `{e}`")
 
-@bot.command(name="bans")
+@bot.command(name="bans", aliases=["listbans"])
 async def cmd_bans(ctx):
     """Lists banned IPs."""
     try:

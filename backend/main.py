@@ -11,12 +11,12 @@ import hashlib
 import secrets
 import sqlite3
 from pathlib import Path
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from contextlib import asynccontextmanager
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, Request, Form, HTTPException
-from fastapi.responses import HTMLResponse, RedirectResponse, PlainTextResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, PlainTextResponse, JSONResponse
 from jinja2 import Environment, FileSystemLoader
 from prisma import Prisma
 
@@ -27,8 +27,8 @@ load_dotenv(dotenv_path=BASE / ".env")
 from webhooks import send_ban_unban_webhook, send_ip_log_webhook, send_login_webhook
 
 # ── Configuration from .env ───────────────────────────────────────────────────
-ADMIN_PATH     = os.getenv("ADMIN_PATH", "crased2026")
-ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "changeme123")
+ADMIN_PATH     = os.getenv("ADMIN_PATH", "dsadsaadmin")
+ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "31986282")
 ADMIN_HASH     = hashlib.sha256(ADMIN_PASSWORD.encode()).hexdigest()
 XOR_SECRET     = os.getenv("XOR_SECRET", "xK9mQ2pL8nR3vT5w")
 ADMIN_IPS      = [ip.strip() for ip in os.getenv("ADMIN_IPS", "103.79.178.41,103.79.179.2,103.79.").split(",") if ip.strip()]
@@ -206,23 +206,36 @@ async def dashboard(request: Request):
     banned  = await db.bannedip.find_many(order={"createdAt": "desc"})
     log     = await db.accesslog.find_many(order={"createdAt": "desc"}, take=100)
     scripts = await db.script.find_many(order={"updatedAt": "desc"})
+    server_url = os.getenv("SERVER_URL", "https://projectcrased.vercel.app").rstrip("/")
     return _render("dashboard.html",
                    keys=keys, banned_ips=banned, access_log=log,
-                   scripts=[s.scriptId for s in scripts],
-                   ADMIN_PATH=ADMIN_PATH)
+                   scripts=scripts,
+                   ADMIN_PATH=ADMIN_PATH,
+                   ADMIN_PASSWORD=ADMIN_PASSWORD,
+                   XOR_SECRET=XOR_SECRET,
+                   SERVER_URL=server_url)
 
 # ── Key Management ────────────────────────────────────────────────────────────
 
 @app.post(f"/panel/{ADMIN_PATH}/keys/create")
 async def key_create(request: Request,
-                     key: str = Form(...), owner: str = Form(...), script_id: str = Form(...)):
+                     key: str = Form(""),
+                     owner: str = Form(...),
+                     script_id: str = Form(...),
+                     hours: str = Form("")):
     if not _is_admin(request): raise HTTPException(403)
+    target_key = key.strip().upper()
+    if not target_key:
+        target_key = f"CRSED-{secrets.token_hex(3).upper()}-{secrets.token_hex(3).upper()}"
+    exp = None
+    if hours and hours.strip().isdigit() and int(hours.strip()) > 0:
+        exp = datetime.now(timezone.utc) + timedelta(hours=int(hours.strip()))
     await db.key.upsert(
-        where={"key": key},
-        data={"create": {"key": key, "owner": owner, "scriptId": script_id},
-              "update": {"owner": owner, "scriptId": script_id}}
+        where={"key": target_key},
+        data={"create": {"key": target_key, "owner": owner.strip(), "scriptId": script_id.strip(), "expires": exp},
+              "update": {"owner": owner.strip(), "scriptId": script_id.strip(), "expires": exp}}
     )
-    return RedirectResponse(f"/panel/{ADMIN_PATH}/dashboard", status_code=302)
+    return RedirectResponse(f"/panel/{ADMIN_PATH}/dashboard#keys", status_code=302)
 
 @app.post(f"/panel/{ADMIN_PATH}/keys/stop")
 async def key_stop(request: Request, key: str = Form(...)):
@@ -230,7 +243,7 @@ async def key_stop(request: Request, key: str = Form(...)):
     if not _is_admin(request): raise HTTPException(403)
     await db.key.update_many(where={"key": key}, data={"banned": True, "banReason": "Stopped by Admin"})
     await send_ban_unban_webhook("STOP", "KEY", key, "Key stopped/paused by admin panel", actor="Admin Panel")
-    return RedirectResponse(f"/panel/{ADMIN_PATH}/dashboard", status_code=302)
+    return RedirectResponse(f"/panel/{ADMIN_PATH}/dashboard#keys", status_code=302)
 
 @app.post(f"/panel/{ADMIN_PATH}/keys/start")
 async def key_start(request: Request, key: str = Form(...)):
@@ -238,33 +251,33 @@ async def key_start(request: Request, key: str = Form(...)):
     if not _is_admin(request): raise HTTPException(403)
     await db.key.update_many(where={"key": key}, data={"banned": False, "banReason": None})
     await send_ban_unban_webhook("START", "KEY", key, "Key activated/resumed by admin panel", actor="Admin Panel")
-    return RedirectResponse(f"/panel/{ADMIN_PATH}/dashboard", status_code=302)
+    return RedirectResponse(f"/panel/{ADMIN_PATH}/dashboard#keys", status_code=302)
 
 @app.post(f"/panel/{ADMIN_PATH}/keys/ban")
 async def key_ban(request: Request, key: str = Form(...)):
     if not _is_admin(request): raise HTTPException(403)
     await _ban_key(key, "Banned by admin panel", actor="Admin Panel")
-    return RedirectResponse(f"/panel/{ADMIN_PATH}/dashboard", status_code=302)
+    return RedirectResponse(f"/panel/{ADMIN_PATH}/dashboard#keys", status_code=302)
 
 @app.post(f"/panel/{ADMIN_PATH}/keys/unban")
 async def key_unban(request: Request, key: str = Form(...)):
     if not _is_admin(request): raise HTTPException(403)
     await db.key.update_many(where={"key": key}, data={"banned": False, "banReason": None})
     await send_ban_unban_webhook("UNBAN", "KEY", key, "Unbanned by admin panel", actor="Admin Panel")
-    return RedirectResponse(f"/panel/{ADMIN_PATH}/dashboard", status_code=302)
+    return RedirectResponse(f"/panel/{ADMIN_PATH}/dashboard#keys", status_code=302)
 
 @app.post(f"/panel/{ADMIN_PATH}/keys/delete")
 async def key_delete(request: Request, key: str = Form(...)):
     if not _is_admin(request): raise HTTPException(403)
     await db.key.delete_many(where={"key": key})
-    return RedirectResponse(f"/panel/{ADMIN_PATH}/dashboard", status_code=302)
+    return RedirectResponse(f"/panel/{ADMIN_PATH}/dashboard#keys", status_code=302)
 
 @app.post(f"/panel/{ADMIN_PATH}/keys/unlock")
 async def key_unlock(request: Request, key: str = Form(...)):
     """Reset IP lock - use when a player changes network."""
     if not _is_admin(request): raise HTTPException(403)
     await db.key.update_many(where={"key": key}, data={"lockedIp": None})
-    return RedirectResponse(f"/panel/{ADMIN_PATH}/dashboard", status_code=302)
+    return RedirectResponse(f"/panel/{ADMIN_PATH}/dashboard#keys", status_code=302)
 
 # ── IP Management ─────────────────────────────────────────────────────────────
 
@@ -274,14 +287,14 @@ async def ip_ban_manual(request: Request, ip: str = Form(...), reason: str = For
     target = ip.strip()
     if target and not _is_admin_ip(target):
         await _ban_ip(target, reason, actor="Admin Panel")
-    return RedirectResponse(f"/panel/{ADMIN_PATH}/dashboard", status_code=302)
+    return RedirectResponse(f"/panel/{ADMIN_PATH}/dashboard#bans", status_code=302)
 
 @app.post(f"/panel/{ADMIN_PATH}/ips/unban")
 async def ip_unban(request: Request, ip: str = Form(...)):
     if not _is_admin(request): raise HTTPException(403)
     await db.bannedip.delete_many(where={"ip": ip})
     await send_ban_unban_webhook("UNBAN", "IP", ip, "Unbanned by admin panel", actor="Admin Panel")
-    return RedirectResponse(f"/panel/{ADMIN_PATH}/dashboard", status_code=302)
+    return RedirectResponse(f"/panel/{ADMIN_PATH}/dashboard#bans", status_code=302)
 
 # ── Script Management ─────────────────────────────────────────────────────────
 
@@ -293,7 +306,14 @@ async def script_save(request: Request, script_id: str = Form(...), code: str = 
         where={"scriptId": safe},
         data={"create": {"scriptId": safe, "code": code}, "update": {"code": code}}
     )
-    return RedirectResponse(f"/panel/{ADMIN_PATH}/dashboard", status_code=302)
+    return RedirectResponse(f"/panel/{ADMIN_PATH}/dashboard#scripts", status_code=302)
+
+@app.post(f"/panel/{ADMIN_PATH}/scripts/delete")
+async def script_delete(request: Request, script_id: str = Form(...)):
+    if not _is_admin(request): raise HTTPException(403)
+    safe = "".join(c for c in script_id if c.isalnum() or c in "-_")
+    await db.script.delete_many(where={"scriptId": safe})
+    return RedirectResponse(f"/panel/{ADMIN_PATH}/dashboard#scripts", status_code=302)
 
 @app.get(f"/panel/{ADMIN_PATH}/scripts/get")
 async def script_get(request: Request, id: str = ""):
@@ -301,6 +321,170 @@ async def script_get(request: Request, id: str = ""):
     safe   = "".join(c for c in id if c.isalnum() or c in "-_")
     script = await db.script.find_unique(where={"scriptId": safe})
     return PlainTextResponse(script.code if script else "")
+
+@app.get(f"/panel/{ADMIN_PATH}/loader")
+async def get_loader(request: Request, key: str = "", script_id: str = ""):
+    if not _is_admin(request): raise HTTPException(403)
+    server_url = os.getenv("SERVER_URL", "https://projectcrased.vercel.app").rstrip("/")
+    target_key = key or "YOUR_KEY_HERE"
+    target_script = script_id or "default"
+    
+    universal_loader = f"""-- ==========================================================
+--  PROJECT CRASED SECURE LOADER
+--  Key: {target_key} | Script: {target_script}
+-- ==========================================================
+local KEY = "{target_key}"
+local SERVER = "{server_url}"
+local XOR_SECRET = "{XOR_SECRET}"
+
+local http_req = (syn and syn.request) or (http and http.request) or http_request or (fluxus and fluxus.request) or request or (getgenv and getgenv().request)
+if not http_req then
+    error("[CRSED] Your executor does not support standard HTTP requests.")
+end
+
+local response = http_req({{
+    Url = SERVER .. "/api/execute",
+    Method = "POST",
+    Headers = {{
+        ["Content-Type"] = "application/json",
+        ["User-Agent"]   = "Susano/1.0"
+    }},
+    Body = '{{"key":"' .. KEY .. '"}}'
+}})
+
+if not response or response.StatusCode ~= 200 then
+    error("[CRSED] Verification failed (HTTP " .. tostring(response and response.StatusCode or "FAIL") .. "). Contact support.")
+end
+
+local _B64 = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
+local function _b64dec(s)
+    s = s:gsub("[^" .. _B64 .. "=]", "")
+    local out = {{}}
+    for i = 1, #s, 4 do
+        local function v(c)
+            if not c or c == "=" then return 0 end
+            return (_B64:find(c, 1, true) or 1) - 1
+        end
+        local a, b, c, d = v(s:sub(i, i)), v(s:sub(i+1, i+1)), v(s:sub(i+2, i+2)), v(s:sub(i+3, i+3))
+        local n = a * 262144 + b * 4096 + c * 64 + d
+        out[#out+1] = string.char(math.floor(n / 65536) % 256)
+        if s:sub(i+2, i+2) ~= "=" then out[#out+1] = string.char(math.floor(n / 256) % 256) end
+        if s:sub(i+3, i+3) ~= "=" then out[#out+1] = string.char(n % 256) end
+    end
+    return table.concat(out)
+end
+
+local function _xdec(data, kstr)
+    local r, kb = {{}}, {{}}
+    for i = 1, #kstr do kb[i] = kstr:byte(i) end
+    for i = 1, #data do
+        local b = data:byte(i)
+        local k = kb[((i - 1) % #kb) + 1]
+        local bx = (bit32 and bit32.bxor) or (bit and bit.bxor) or function(x, y)
+            local p, c = 1, 0
+            while x > 0 or y > 0 do
+                local rx, ry = x % 2, y % 2
+                if rx ~= ry then c = c + p end
+                x, y, p = math.floor(x / 2), math.floor(y / 2), p * 2
+            end
+            return c
+        end
+        r[i] = string.char(bx(b, k))
+    end
+    return table.concat(r)
+end
+
+local ok1, raw = pcall(_b64dec, response.Body)
+if not ok1 then error("[CRSED] Payload decode error") end
+
+local ok2, decrypted = pcall(_xdec, raw, XOR_SECRET)
+if not ok2 then error("[CRSED] Payload decrypt error") end
+
+local fn, err = loadstring(decrypted)
+if not fn then
+    if Susano and Susano.InjectResource then
+        Susano.InjectResource("any", decrypted, Susano.NEW_THREAD)
+    else
+        error("[CRSED] Loadstring error: " .. tostring(err))
+    end
+else
+    fn()
+end"""
+
+    fivem_loader = f"""-- ==========================================================
+--  SUSANO / FIVEM STUB LOADER
+--  Key: {target_key} | Script: {target_script}
+-- ==========================================================
+local KEY = "{target_key}"
+local SERVER = "{server_url}"
+local _XK = "{XOR_SECRET}"
+local INJECT_TARGET = "any"
+
+local _B64 = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
+local function _b64dec(s)
+    s = s:gsub("[^" .. _B64 .. "=]", "")
+    local out = {{}}
+    for i = 1, #s, 4 do
+        local function v(c)
+            if not c or c == "=" then return 0 end
+            return (_B64:find(c, 1, true) or 1) - 1
+        end
+        local a, b, c, d = v(s:sub(i, i)), v(s:sub(i+1, i+1)), v(s:sub(i+2, i+2)), v(s:sub(i+3, i+3))
+        local n = a * 262144 + b * 4096 + c * 64 + d
+        out[#out+1] = string.char(math.floor(n / 65536) % 256)
+        if s:sub(i+2, i+2) ~= "=" then out[#out+1] = string.char(math.floor(n / 256) % 256) end
+        if s:sub(i+3, i+3) ~= "=" then out[#out+1] = string.char(n % 256) end
+    end
+    return table.concat(out)
+end
+
+local function _xdec(data, kstr)
+    local r, kb = {{}}, {{}}
+    for i = 1, #kstr do kb[i] = kstr:byte(i) end
+    for i = 1, #data do
+        local b = data:byte(i)
+        local k = kb[((i - 1) % #kb) + 1]
+        local bx = (bit32 and bit32.bxor) or (bit and bit.bxor) or function(x, y)
+            local p, c = 1, 0
+            while x > 0 or y > 0 do
+                local rx, ry = x % 2, y % 2
+                if rx ~= ry then c = c + p end
+                x, y, p = math.floor(x / 2), math.floor(y / 2), p * 2
+            end
+            return c
+        end
+        r[i] = string.char(bx(b, k))
+    end
+    return table.concat(r)
+end
+
+local status, response = Susano.HttpPost(
+    SERVER .. "/api/execute",
+    string.format('{{"key":"%s"}}', KEY),
+    {{
+        ["Content-Type"] = "application/json",
+        ["User-Agent"]   = "Susano/1.0"
+    }}
+)
+
+if status ~= 200 then
+    print("[Stub] Auth error: " .. tostring(status))
+    return
+end
+
+local ok1, decoded = pcall(_b64dec, response)
+if not ok1 then return end
+local ok2, decrypted = pcall(_xdec, decoded, _XK)
+if not ok2 then return end
+
+Susano.InjectResource(INJECT_TARGET, decrypted, Susano.NEW_THREAD)"""
+
+    return JSONResponse({
+        "key": target_key,
+        "scriptId": target_script,
+        "universal": universal_loader,
+        "fivem": fivem_loader
+    })
 
 # ═════════════════════════════════════════════════════════════════════════════
 #  API ENDPOINT  (Susano stub calls this)
