@@ -1,0 +1,29 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Admin</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{background:#080808;color:#c0c0c0;font-family:'Courier New',monospace;display:flex;align-items:center;justify-content:center;min-height:100vh}
+.panel{width:340px;background:#111;border:1px solid #1e1e1e;padding:36px 32px;border-radius:3px}
+h1{font-size:.8rem;color:#333;letter-spacing:4px;margin-bottom:28px;text-transform:uppercase}
+input[type=password]{width:100%;padding:10px 12px;background:#0a0a0a;border:1px solid #222;color:#ccc;font-family:inherit;font-size:.9rem;border-radius:2px;outline:none;margin-bottom:14px}
+input:focus{border-color:#1a4070}
+button{width:100%;padding:10px;background:#0d2540;border:1px solid #164070;color:#4488bb;font-family:inherit;font-size:.8rem;letter-spacing:2px;cursor:pointer;border-radius:2px;transition:background .2s}
+button:hover{background:#142e50}
+.err{color:#aa2222;font-size:.78rem;margin-bottom:12px;padding:8px;background:#1a0808;border:1px solid #2a0808;border-radius:2px}
+</style>
+</head>
+<body>
+<div class="panel">
+  <h1>// Restricted Access</h1>
+  {% if error %}<div class="err">&#x2715; {{ error }}</div>{% endif %}
+  <form method="POST">
+    <input type="password" name="password" placeholder="Password" autofocus autocomplete="current-password">
+    <button type="submit">AUTHENTICATE</button>
+  </form>
+</div>
+</body>
+</html>

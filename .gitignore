@@ -1,0 +1,30 @@
+﻿# ── Security & Secrets ──
+.env
+*.env
+*.pem
+*.key
+
+# ── Database & Storage ──
+*.db
+*.db-journal
+dev.db
+backend/dev.db
+
+# ── Python Cache & Environments ──
+__pycache__/
+*.py[cod]
+*.class
+*.so
+.Python
+env/
+venv/
+.venv/
+ENV/
+
+# ── IDE & OS ──
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db

@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Admin Dashboard</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{background:#090909;color:#bbb;font-family:'Courier New',monospace;font-size:.82rem}
+header{background:#0e0e0e;border-bottom:1px solid #1a1a1a;padding:14px 24px;display:flex;align-items:center;gap:16px}
+header h1{font-size:.9rem;color:#336;letter-spacing:3px;color:#4477aa}
+.badge{background:#0d2540;color:#4488bb;padding:3px 10px;border-radius:2px;font-size:.72rem;letter-spacing:1px}
+.tabs{display:flex;gap:0;border-bottom:1px solid #1a1a1a;background:#0c0c0c}
+.tab{padding:10px 20px;cursor:pointer;color:#555;letter-spacing:1px;font-size:.75rem;border-right:1px solid #141414;transition:color .2s}
+.tab:hover{color:#88aacc}
+.tab.active{color:#88ccff;border-bottom:2px solid #336699;background:#0e0e0e}
+.pane{display:none;padding:20px 24px}
+.pane.active{display:block}
+table{width:100%;border-collapse:collapse;margin-top:10px}
+th{text-align:left;padding:8px 10px;background:#0d0d0d;color:#445566;border-bottom:1px solid #1a1a1a;font-size:.72rem;letter-spacing:1px}
+td{padding:7px 10px;border-bottom:1px solid #121212;color:#999;white-space:nowrap}
+tr:hover td{background:#0d1117}
+.badge-valid{color:#339944;background:#0a1a0d;padding:2px 8px;border-radius:2px}
+.badge-ban{color:#993333;background:#1a0808;padding:2px 8px;border-radius:2px}
+.badge-inv{color:#886622;background:#181208;padding:2px 8px;border-radius:2px}
+.badge-err{color:#665588;background:#110d18;padding:2px 8px;border-radius:2px}
+.badge-blk{color:#555;background:#111;padding:2px 8px;border-radius:2px}
+form.inline{display:inline}
+button,input[type=submit]{background:#0d2030;border:1px solid #1a3555;color:#4488aa;padding:4px 10px;font-family:inherit;font-size:.75rem;cursor:pointer;border-radius:2px}
+button:hover,input[type=submit]:hover{background:#102840}
+button.danger{background:#200808;border-color:#3a1111;color:#aa4444}
+button.danger:hover{background:#2a0e0e}
+input[type=text],input[type=password],select,textarea{background:#0a0a0a;border:1px solid #1e1e1e;color:#bbb;padding:6px 10px;font-family:inherit;font-size:.82rem;border-radius:2px;outline:none;width:100%}
+input:focus,select:focus,textarea:focus{border-color:#1a4070}
+textarea{resize:vertical;min-height:220px;font-size:.78rem}
+.form-row{display:flex;gap:10px;margin-bottom:10px;align-items:flex-start}
+.form-row label{display:block;color:#445;font-size:.72rem;letter-spacing:1px;margin-bottom:4px}
+.form-row .field{flex:1}
+.card{background:#0d0d0d;border:1px solid #1a1a1a;padding:16px;border-radius:3px;margin-bottom:16px}
+.card h2{font-size:.75rem;color:#335577;letter-spacing:2px;margin-bottom:14px;text-transform:uppercase}
+.hwid{font-size:.65rem;color:#444;max-width:160px;overflow:hidden;text-overflow:ellipsis}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>// ADMIN PANEL</h1>
+  <span class="badge">SECURE</span>
+</header>
+
+<div class="tabs">
+  <div class="tab active" onclick="show('log')">ACCESS LOG</div>
+  <div class="tab" onclick="show('keys')">KEYS</div>
+  <div class="tab" onclick="show('bans')">BANNED IPs</div>
+  <div class="tab" onclick="show('scripts')">SCRIPTS</div>
+</div>
+
+<!-- ── ACCESS LOG ─────────────────────────────────────────── -->
+<div id="pane-log" class="pane active">
+  <table>
+    <thead><tr>
+      <th>TIME</th><th>IP</th><th>KEY</th><th>HWID</th><th>RESULT</th><th>REASON</th>
+    </tr></thead>
+    <tbody>
+    {% for e in access_log %}
+    <tr>
+      <td>{{ e.time }}</td>
+      <td>{{ e.ip }}</td>
+      <td>{{ e.key[:18] }}{% if e.key|length > 18 %}…{% endif %}</td>
+      <td class="hwid">{{ (e.hwid or '')[:22] }}</td>
+      <td>
+        {% if e.result == 'VALID' %}<span class="badge-valid">VALID</span>
+        {% elif e.result == 'BANNED' %}<span class="badge-ban">BANNED</span>
+        {% elif e.result == 'INVALID' %}<span class="badge-inv">INVALID</span>
+        {% elif e.result == 'BLOCKED' %}<span class="badge-blk">BLOCKED</span>
+        {% else %}<span class="badge-err">{{ e.result }}</span>{% endif %}
+      </td>
+      <td>{{ e.reason }}</td>
+    </tr>
+    {% else %}
+    <tr><td colspan="6" style="text-align:center;color:#333;padding:24px">No entries yet</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<!-- ── KEYS ───────────────────────────────────────────────── -->
+<div id="pane-keys" class="pane">
+
+  <div class="card">
+    <h2>Create Key</h2>
+    <form method="POST" action="/panel/{{ ADMIN_PATH }}/keys/create">
+      <div class="form-row">
+        <div class="field"><label>KEY</label><input type="text" name="key" placeholder="KEY-XXXX-0001" required></div>
+        <div class="field"><label>OWNER</label><input type="text" name="owner" placeholder="Player name" required></div>
+        <div class="field"><label>SCRIPT ID</label>
+          <select name="script_id" required>
+            {% for s in scripts %}<option value="{{ s }}">{{ s }}</option>{% endfor %}
+            {% if not scripts %}<option value="">-- upload a script first --</option>{% endif %}
+          </select>
+        </div>
+        <div class="field" style="flex:0"><label>&nbsp;</label><button type="submit">CREATE</button></div>
+      </div>
+    </form>
+  </div>
+
+  <table>
+    <thead><tr>
+      <th>KEY</th><th>OWNER</th><th>SCRIPT</th><th>IP LOCK</th><th>STATUS</th><th>CREATED</th><th>ACTIONS</th>
+    </tr></thead>
+    <tbody>
+    {% for key, v in keys.items() %}
+    <tr>
+      <td>{{ key }}</td>
+      <td>{{ v.owner }}</td>
+      <td>{{ v.script_id }}</td>
+      <td>{% if v.hwid %}<span style="color:#229944;font-size:.72rem">{{ v.hwid }}</span>{% else %}<span style="color:#444">FREE</span>{% endif %}</td>
+      <td>{% if v.banned %}<span class="badge-ban">BANNED</span>{% else %}<span class="badge-valid">ACTIVE</span>{% endif %}</td>
+      <td>{{ v.get('created','—') }}</td>
+      <td>
+        {% if v.banned %}
+        <form class="inline" method="POST" action="/panel/{{ ADMIN_PATH }}/keys/unban">
+          <input type="hidden" name="key" value="{{ key }}">
+          <button type="submit">Unban</button>
+        </form>
+        {% else %}
+        <form class="inline" method="POST" action="/panel/{{ ADMIN_PATH }}/keys/ban">
+          <input type="hidden" name="key" value="{{ key }}">
+          <button class="danger" type="submit">Ban</button>
+        </form>
+        {% endif %}
+        <form class="inline" method="POST" action="/panel/{{ ADMIN_PATH }}/keys/delete">
+          <input type="hidden" name="key" value="{{ key }}">
+          <button class="danger" type="submit" onclick="return confirm('Delete this key?')">Delete</button>
+        </form>
+      </td>
+    </tr>
+    {% else %}
+    <tr><td colspan="7" style="text-align:center;color:#333;padding:24px">No keys yet</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<!-- ── BANNED IPs ─────────────────────────────────────────── -->
+<div id="pane-bans" class="pane">
+  <table>
+    <thead><tr><th>IP</th><th>BANNED AT</th><th>REASON</th><th>ACTION</th></tr></thead>
+    <tbody>
+    {% for ip, v in banned_ips.items() %}
+    <tr>
+      <td>{{ ip }}</td>
+      <td>{{ v.time }}</td>
+      <td>{{ v.reason }}</td>
+      <td>
+        <form class="inline" method="POST" action="/panel/{{ ADMIN_PATH }}/ips/unban">
+          <input type="hidden" name="ip" value="{{ ip }}">
+          <button type="submit">Unban</button>
+        </form>
+      </td>
+    </tr>
+    {% else %}
+    <tr><td colspan="4" style="text-align:center;color:#333;padding:24px">No banned IPs</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<!-- ── SCRIPTS ────────────────────────────────────────────── -->
+<div id="pane-scripts" class="pane">
+  <div class="card">
+    <h2>Save / Update Script</h2>
+    <form method="POST" action="/panel/{{ ADMIN_PATH }}/scripts/save">
+      <div class="form-row">
+        <div class="field">
+          <label>SCRIPT ID (filename, no spaces)</label>
+          <input type="text" name="script_id" id="script_id_input" placeholder="myscript" required>
+        </div>
+        <div class="field" style="flex:0;padding-top:22px">
+          <select id="script_loader" onchange="loadScript(this.value)">
+            <option value="">-- load existing --</option>
+            {% for s in scripts %}<option value="{{ s }}">{{ s }}</option>{% endfor %}
+          </select>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="field">
+          <label>LUA CODE (your real script — never sent to players as a file)</label>
+          <textarea name="code" id="code_area" placeholder="-- paste your real Lua script here"></textarea>
+        </div>
+      </div>
+      <button type="submit">SAVE SCRIPT</button>
+    </form>
+  </div>
+
+  {% if scripts %}
+  <div class="card">
+    <h2>Saved Scripts</h2>
+    <table>
+      <thead><tr><th>SCRIPT ID</th><th>FILE</th></tr></thead>
+      <tbody>
+      {% for s in scripts %}
+      <tr><td>{{ s }}</td><td>data/scripts/{{ s }}.lua</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+</div>
+
+<script>
+function show(tab) {
+  document.querySelectorAll('.pane').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.getElementById('pane-' + tab).classList.add('active');
+  event.target.classList.add('active');
+}
+function loadScript(id) {
+  if (!id) return;
+  fetch('/panel/{{ ADMIN_PATH }}/scripts/get?id=' + encodeURIComponent(id))
+    .then(r => r.text()).then(txt => {
+      document.getElementById('code_area').value = txt;
+      document.getElementById('script_id_input').value = id;
+    });
+}
+</script>
+</body>
+</html>
