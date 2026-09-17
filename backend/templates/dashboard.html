@@ -46,6 +46,7 @@ textarea{resize:vertical;min-height:220px;font-size:.78rem}
 <header>
   <h1>// ADMIN PANEL</h1>
   <span class="badge">SECURE</span>
+  <span class="badge" style="background:#0a1a0d;color:#33bb55;border:1px solid #144020">ADMIN IP: 103.79.178.41 (AUTHORIZED)</span>
 </header>
 
 <div class="tabs">
@@ -114,18 +115,38 @@ textarea{resize:vertical;min-height:220px;font-size:.78rem}
       <td>{{ k.owner }}</td>
       <td>{{ k.scriptId }}</td>
       <td>{% if k.lockedIp %}<span style="color:#229944;font-size:.72rem">{{ k.lockedIp }}</span>{% else %}<span style="color:#444">FREE</span>{% endif %}</td>
-      <td>{% if k.banned %}<span class="badge-ban">BANNED</span>{% else %}<span class="badge-valid">ACTIVE</span>{% endif %}</td>
-      <td>{{ k.createdAt.strftime('%Y-%m-%d %H:%M') if k.createdAt else '—' }}</td>
       <td>
         {% if k.banned %}
-        <form class="inline" method="POST" action="/panel/{{ ADMIN_PATH }}/keys/unban">
+          {% if k.banReason and 'Stop' in k.banReason %}
+          <span class="badge-inv">STOPPED</span>
+          {% else %}
+          <span class="badge-ban">BANNED</span>
+          {% endif %}
+        {% else %}
+          <span class="badge-valid">ACTIVE</span>
+        {% endif %}
+      </td>
+      <td>{{ k.createdAt.strftime('%Y-%m-%d %H:%M') if k.createdAt else '—' }}</td>
+      <td style="display:flex;gap:4px;flex-wrap:wrap">
+        {% if k.banned %}
+        <form class="inline" method="POST" action="/panel/{{ ADMIN_PATH }}/keys/start">
           <input type="hidden" name="key" value="{{ k.key }}">
-          <button type="submit">Unban</button>
+          <button type="submit" style="background:#0a2010;border-color:#1e4a28;color:#44bb66">Start</button>
         </form>
         {% else %}
+        <form class="inline" method="POST" action="/panel/{{ ADMIN_PATH }}/keys/stop">
+          <input type="hidden" name="key" value="{{ k.key }}">
+          <button type="submit" style="background:#201808;border-color:#4a3810;color:#ddaa44">Stop</button>
+        </form>
         <form class="inline" method="POST" action="/panel/{{ ADMIN_PATH }}/keys/ban">
           <input type="hidden" name="key" value="{{ k.key }}">
           <button class="danger" type="submit">Ban</button>
+        </form>
+        {% endif %}
+        {% if k.lockedIp %}
+        <form class="inline" method="POST" action="/panel/{{ ADMIN_PATH }}/keys/unlock">
+          <input type="hidden" name="key" value="{{ k.key }}">
+          <button type="submit" title="Reset locked IP">Unlock IP</button>
         </form>
         {% endif %}
         <form class="inline" method="POST" action="/panel/{{ ADMIN_PATH }}/keys/delete">
@@ -143,6 +164,17 @@ textarea{resize:vertical;min-height:220px;font-size:.78rem}
 
 <!-- ── BANNED IPs ─────────────────────────────────────────── -->
 <div id="pane-bans" class="pane">
+  <div class="card">
+    <h2>Ban IP Address Manually</h2>
+    <form method="POST" action="/panel/{{ ADMIN_PATH }}/ips/ban">
+      <div class="form-row">
+        <div class="field"><label>IP ADDRESS</label><input type="text" name="ip" placeholder="e.g. 1.2.3.4" required></div>
+        <div class="field"><label>REASON</label><input type="text" name="reason" placeholder="Suspicious activity / bypass attempt" value="Manual Admin Ban"></div>
+        <div class="field" style="flex:0"><label>&nbsp;</label><button class="danger" type="submit">BAN IP</button></div>
+      </div>
+    </form>
+  </div>
+
   <table>
     <thead><tr><th>IP</th><th>BANNED AT</th><th>REASON</th><th>ACTION</th></tr></thead>
     <tbody>
@@ -154,7 +186,7 @@ textarea{resize:vertical;min-height:220px;font-size:.78rem}
       <td>
         <form class="inline" method="POST" action="/panel/{{ ADMIN_PATH }}/ips/unban">
           <input type="hidden" name="ip" value="{{ b.ip }}">
-          <button type="submit">Unban</button>
+          <button type="submit" style="background:#0a2010;border-color:#1e4a28;color:#44bb66">Unban</button>
         </form>
       </td>
     </tr>

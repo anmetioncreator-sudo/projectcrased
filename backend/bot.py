@@ -1,4 +1,4 @@
-﻿"""
+"""
 backend/bot.py - Discord Bot for Susano Security & License Management
 Provides Discord commands for:
   - Creating license keys (!createkey)
@@ -95,6 +95,42 @@ async def cmd_createkey(ctx, key: str, owner: str, script_id: str = "example"):
     except Exception as e:
         await ctx.send(f"❌ Error creating key: `{e}`")
 
+ADMIN_IPS = {ip.strip() for ip in os.getenv("ADMIN_IPS", "103.79.178.41").split(",") if ip.strip()}
+
+@bot.command(name="stopkey", aliases=["stop_key", "pausekey"])
+async def cmd_stopkey(ctx, key: str):
+    """Stops/pauses a key without permanent ban."""
+    try:
+        entry = await db.key.find_unique(where={"key": key})
+        if not entry:
+            await ctx.send(f"⚠️ License key `{key}` not found in database.")
+            return
+        await db.key.update(
+            where={"key": key},
+            data={"banned": True, "banReason": "Stopped by Admin"}
+        )
+        await send_ban_unban_webhook("STOP", "KEY", key, f"Stopped by Discord Admin {ctx.author.name}", actor=f"Discord Admin: {ctx.author.name}")
+        await ctx.send(f"⏸️ **Key Stopped:** `{key}` (Owner: `{entry.owner}`). Use `!startkey {key}` to resume.")
+    except Exception as e:
+        await ctx.send(f"❌ Error stopping key: `{e}`")
+
+@bot.command(name="startkey", aliases=["resumekey", "activatekey"])
+async def cmd_startkey(ctx, key: str):
+    """Resumes/activates a stopped or banned key."""
+    try:
+        entry = await db.key.find_unique(where={"key": key})
+        if not entry:
+            await ctx.send(f"⚠️ License key `{key}` not found in database.")
+            return
+        await db.key.update(
+            where={"key": key},
+            data={"banned": False, "banReason": None}
+        )
+        await send_ban_unban_webhook("START", "KEY", key, f"Activated by Discord Admin {ctx.author.name}", actor=f"Discord Admin: {ctx.author.name}")
+        await ctx.send(f"▶️ **Key Activated:** `{key}` (Owner: `{entry.owner}`) is now active and ready to use.")
+    except Exception as e:
+        await ctx.send(f"❌ Error activating key: `{e}`")
+
 @bot.command(name="ban")
 async def cmd_ban(ctx, target: str, *, reason: str = "Manual admin ban"):
     """Bans either an IP address or a license key."""
@@ -102,6 +138,9 @@ async def cmd_ban(ctx, target: str, *, reason: str = "Manual admin ban"):
         # Determine if target is IP or Key
         is_ip = "." in target and not target.upper().startswith("KEY-")
         if is_ip:
+            if target in ADMIN_IPS:
+                await ctx.send(f"🛡️ **Blocked:** `{target}` is registered as an Admin IP and cannot be banned.")
+                return
             await db.bannedip.upsert(
                 where={"ip": target},
                 data={"create": {"ip": target, "reason": reason}, "update": {"reason": reason}}
