@@ -10,6 +10,12 @@ Provides Discord commands for:
 
 import os
 import sys
+
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="backslashreplace")
+if hasattr(sys.stderr, "reconfigure"):
+    sys.stderr.reconfigure(encoding="utf-8", errors="backslashreplace")
+
 import asyncio
 from datetime import datetime, timezone
 from pathlib import Path
@@ -309,17 +315,21 @@ async def cmd_stop(ctx):
 
 async def main():
     if not BOT_TOKEN or "YOUR_" in BOT_TOKEN:
-        print("[Bot Error] DISCORD_BOT_TOKEN is not configured in .env file!")
+        print("[Bot Error] DISCORD_BOT_TOKEN is not configured in .env file!", flush=True)
         return
 
-    print("[Bot] Connecting to Prisma database...")
-    await db.connect()
+    print("[Bot] Connecting to Prisma database...", flush=True)
+    if not db.is_connected():
+        await db.connect()
     try:
-        print("[Bot] Starting Discord bot...")
+        print("[Bot] Starting Discord bot...", flush=True)
         await bot.start(BOT_TOKEN)
+    except Exception as e:
+        print(f"[Bot Exception] {e}", flush=True)
     finally:
-        print("[Bot] Disconnecting from database...")
-        await db.disconnect()
+        print("[Bot] Disconnecting from database...", flush=True)
+        if db.is_connected():
+            await db.disconnect()
 
 if __name__ == "__main__":
     try:
