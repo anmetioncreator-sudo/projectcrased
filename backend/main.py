@@ -27,8 +27,8 @@ load_dotenv(dotenv_path=BASE / ".env")
 from webhooks import send_ban_unban_webhook, send_ip_log_webhook, send_login_webhook
 
 # ── Configuration from .env ───────────────────────────────────────────────────
-ADMIN_PATH     = os.getenv("ADMIN_PATH", "dsadsaadmin")
-ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "31986282")
+ADMIN_PATH     = os.getenv("ADMIN_PATH", "dsadsaadmin").strip().strip('"').strip("'")
+ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "31986282").strip().strip('"').strip("'")
 ADMIN_HASH     = hashlib.sha256(ADMIN_PASSWORD.encode()).hexdigest()
 XOR_SECRET     = os.getenv("XOR_SECRET", "xK9mQ2pL8nR3vT5w")
 ADMIN_IPS      = [ip.strip() for ip in os.getenv("ADMIN_IPS", "103.79.178.41,103.79.179.2,103.79.").split(",") if ip.strip()]
@@ -89,7 +89,7 @@ is_serverless = "VERCEL" in os.environ or bool(os.environ.get("AWS_LAMBDA_FUNCTI
 if is_serverless:
     db_file = Path("/tmp/dev.db")
     _init_sqlite_if_needed(db_file)
-    db_url = f"file:{db_file}"
+    db_url = f"file:{db_file.resolve()}"
     os.environ["DATABASE_URL"] = db_url
 else:
     raw_url = os.getenv("DATABASE_URL", f"file:{BASE / 'dev.db'}")
@@ -97,9 +97,11 @@ else:
         p_str = raw_url.replace("file:", "")
         local_path = Path(p_str)
         if not local_path.is_absolute():
-            local_path = BASE / local_path
+            local_path = (BASE / local_path).resolve()
         _init_sqlite_if_needed(local_path)
-    db_url = raw_url
+        db_url = f"file:{local_path.resolve()}"
+    else:
+        db_url = raw_url
 
 db = Prisma(datasource={"url": db_url})
 
@@ -113,6 +115,8 @@ app  = FastAPI(docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespa
 
 @app.middleware("http")
 async def ensure_db_connected(request: Request, call_next):
+    if is_serverless:
+        _init_sqlite_if_needed(Path("/tmp/dev.db"))
     if not db.is_connected():
         await db.connect()
     return await call_next(request)
@@ -553,16 +557,28 @@ async def api_execute(request: Request):
     return PlainTextResponse(encoded)
 
 # ═════════════════════════════════════════════════════════════════════════════
-#  CATCH-ALL TRAP (Bans anyone snooping around the website)
+#  CATCH-ALL TRAP & ROOT ROUTE
 # ═════════════════════════════════════════════════════════════════════════════
+
+@app.get("/")
+async def root_index(request: Request):
+    ip = _get_ip(request)
+    if _is_admin_ip(ip):
+        return RedirectResponse(f"/panel/{ADMIN_PATH}/dashboard", status_code=302)
+    await _ban_ip(ip, "Visited root index", actor="Trap Guard")
+    await _log(ip, "", "BANNED", "Browsed to: /")
+    raise HTTPException(403)
 
 @app.api_route("/{path:path}",
                methods=["GET","POST","PUT","DELETE","HEAD","OPTIONS","PATCH"])
 async def trap(request: Request, path: str):
     ip = _get_ip(request)
+    clean = path.strip("/")
     if _is_admin_ip(ip):
+        if clean.startswith(f"panel/{ADMIN_PATH}"):
+            raise HTTPException(404)
         return RedirectResponse(f"/panel/{ADMIN_PATH}/dashboard", status_code=302)
-    if path.startswith(f"panel/{ADMIN_PATH}"):
+    if clean.startswith(f"panel/{ADMIN_PATH}"):
         raise HTTPException(404)
     await _ban_ip(ip, f"Visited restricted endpoint: /{path}", actor="Trap Guard")
     await _log(ip, "", "BANNED", f"Browsed to: /{path}")
